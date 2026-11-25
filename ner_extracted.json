@@ -1,0 +1,150 @@
+{
+  "document_metadata": {
+    "source_file": "ocr_result_clean.txt",
+    "model_name": "dslim/bert-base-NER",
+    "aggregation_strategy": "simple",
+    "total_entities_found": 20
+  },
+  "entities": [
+    {
+      "entity_group": "ORG",
+      "word": "I",
+      "score": 0.5004,
+      "start": 5,
+      "end": 6
+    },
+    {
+      "entity_group": "ORG",
+      "word": "I",
+      "score": 0.6034,
+      "start": 20,
+      "end": 21
+    },
+    {
+      "entity_group": "LOC",
+      "word": "В",
+      "score": 0.4527,
+      "start": 59,
+      "end": 60
+    },
+    {
+      "entity_group": "ORG",
+      "word": "К",
+      "score": 0.5809,
+      "start": 84,
+      "end": 85
+    },
+    {
+      "entity_group": "ORG",
+      "word": "М",
+      "score": 0.4823,
+      "start": 93,
+      "end": 94
+    },
+    {
+      "entity_group": "ORG",
+      "word": "Д",
+      "score": 0.9362,
+      "start": 112,
+      "end": 113
+    },
+    {
+      "entity_group": "ORG",
+      "word": "П",
+      "score": 0.7037,
+      "start": 114,
+      "end": 115
+    },
+    {
+      "entity_group": "ORG",
+      "word": "IIH",
+      "score": 0.7766,
+      "start": 129,
+      "end": 132
+    },
+    {
+      "entity_group": "ORG",
+      "word": "U",
+      "score": 0.8232,
+      "start": 256,
+      "end": 257
+    },
+    {
+      "entity_group": "LOC",
+      "word": "Ц",
+      "score": 0.389,
+      "start": 284,
+      "end": 285
+    },
+    {
+      "entity_group": "ORG",
+      "word": "U",
+      "score": 0.4794,
+      "start": 340,
+      "end": 341
+    },
+    {
+      "entity_group": "ORG",
+      "word": "U",
+      "score": 0.7545,
+      "start": 387,
+      "end": 388
+    },
+    {
+      "entity_group": "PER",
+      "word": "І",
+      "score": 0.5881,
+      "start": 517,
+      "end": 518
+    },
+    {
+      "entity_group": "PER",
+      "word": "Cko",
+      "score": 0.7807,
+      "start": 564,
+      "end": 567
+    },
+    {
+      "entity_group": "PER",
+      "word": "Ч",
+      "score": 0.908,
+      "start": 570,
+      "end": 571
+    },
+    {
+      "entity_group": "PER",
+      "word": "Ta",
+      "score": 0.5037,
+      "start": 594,
+      "end": 596
+    },
+    {
+      "entity_group": "ORG",
+      "word": "Г",
+      "score": 0.6213,
+      "start": 597,
+      "end": 598
+    },
+    {
+      "entity_group": "ORG",
+      "word": "Ш",
+      "score": 0.7419,
+      "start": 605,
+      "end": 606
+    },
+    {
+      "entity_group": "ORG",
+      "word": "AB",
+      "score": 0.6748,
+      "start": 714,
+      "end": 716
+    },
+    {
+      "entity_group": "ORG",
+      "word": "HH",
+      "score": 0.621,
+      "start": 723,
+      "end": 725
+    }
+  ]
+}

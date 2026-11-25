@@ -1,0 +1,233 @@
+{
+  "name": "Lab6 - OCR -> Groq LLM -> Validation -> HITL",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Лаб. 6: обробка OCR-чека",
+        "formDescription": "Вставте текст розпізнаного чека (ocr_result_noisy.txt)",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "ocr_text",
+              "fieldType": "textarea",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n1",
+      "name": "Form Trigger",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "lab6-ocr-form"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Вузол Code: формує запит до Groq (system + few-shot + CoT, T=0, json_object)\nconst MODEL = 'qwen/qwen3.8-27b'; // <- замініть на модель, яка спрацювала в ноутбуці (змінна MODEL)\nconst ocrText = $input.first().json.ocr_text;\n\nconst schemaHint = {\n  reasoning: 'string - Chain-of-Thought: виправлення OCR, групування позицій, звірка суми',\n  merchant_name: 'string | null',\n  date: 'string YYYY-MM-DD | null',\n  items: [{ name: 'string', quantity: 'number', price: 'number | null', total: 'number | null' }],\n  total_amount: 'number | null'\n};\n\nconst system =\n  'Ти - експертний автономний модуль інтелектуального вилучення даних з документів. ' +\n  'Тобі надано сирий текст чека після OCR. Виправ шуми розпізнавання, згрупуй товари з цінами ' +\n  'та поверни СТРОГО валідний JSON за схемою: ' + JSON.stringify(schemaHint) + '. ' +\n  'ВИМОГИ: поверни ТІЛЬКИ чистий JSON-об\\'єкт без маркдаун-тегів; обов\\'язково заповни поле reasoning ' +\n  '(хід думок і звірка цін); використовуй точні ключі: reasoning, merchant_name, date, items, total_amount; ' +\n  'якщо значення неможливо надійно відновити - став null, НЕ вигадуй дані.\\n\\n' +\n  'ПРИКЛАД:\\nТекст: \\'ATB-Markt 12.05.2025 HLIB 24.00 MOLOKO 36.00 SUMA: 60.00\\'\\n' +\n  'Відповідь: {\"reasoning\":\"Виправлено назву на ATB-Market; дата 2025-05-12; 24+36=60 відповідає підсумку 60.\",' +\n  '\"merchant_name\":\"ATB-Market\",\"date\":\"2025-05-12\",' +\n  '\"items\":[{\"name\":\"HLIB\",\"quantity\":1.0,\"price\":24.0,\"total\":24.0},{\"name\":\"MOLOKO\",\"quantity\":1.0,\"price\":36.0,\"total\":36.0}],' +\n  '\"total_amount\":60.0}';\n\nreturn [{\n  json: {\n    ocr_text: ocrText,\n    body: {\n      model: MODEL,\n      temperature: 0,\n      response_format: { type: 'json_object' },\n      messages: [\n        { role: 'system', content: system },\n        { role: 'user', content: '=== OCR-ТЕКСТ ЧЕКА ===\\n' + ocrText }\n      ]\n    }\n  }\n}];"
+      },
+      "id": "n2",
+      "name": "Build Groq Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "n3",
+      "name": "Groq LLM (HTTP)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Вузол Code: парсинг відповіді LLM + детермінована арифметична валідація\nconst resp = $input.first().json;\nconst ocrText = $('Build Groq Request').first().json.ocr_text;\nconst raw = resp?.choices?.[0]?.message?.content ?? '';\n\nlet data = null, parseError = null;\ntry {\n  let t = String(raw).replace(/<think>[\\s\\S]*?<\\/think>/g, '').trim();\n  t = t.replace(/^```(?:json)?\\s*|\\s*```$/g, '').trim();\n  const a = t.indexOf('{'), b = t.lastIndexOf('}');\n  if (a === -1 || b === -1) throw new Error('JSON-об\\'єкт не знайдено у відповіді');\n  data = JSON.parse(t.slice(a, b + 1));\n} catch (e) {\n  parseError = e.message;\n}\n\nconst issues = [];\nlet calcSum = 0, docTotal = 0, merchant = null, date = null, reasoning = '', items = [];\nif (data) {\n  merchant = data.merchant_name ?? null;\n  date = data.date ?? null;\n  reasoning = data.reasoning ?? '';\n  items = Array.isArray(data.items) ? data.items : [];\n  for (const it of items) {\n    let t = it.total;\n    if ((t === null || t === undefined) && typeof it.price === 'number') t = it.price * (it.quantity ?? 1);\n    if (typeof t === 'number') calcSum += t; else issues.push('позиція «' + it.name + '» без суми');\n  }\n  docTotal = (typeof data.total_amount === 'number' && data.total_amount > 0) ? data.total_amount : 0;\n  if (!merchant) issues.push('не визначено назву торгової точки');\n  if (items.length === 0) issues.push('список позицій порожній');\n  if (docTotal === 0) issues.push('не визначено підсумкову суму (TOTAL)');\n  if (docTotal > 0 && items.length > 0 && Math.abs(calcSum - docTotal) > 0.05) {\n    issues.push('сума позицій ' + calcSum.toFixed(2) + ' не збігається з TOTAL ' + docTotal.toFixed(2));\n  }\n} else {\n  issues.push('відповідь LLM не є валідним JSON: ' + parseError);\n}\nconst discrepancy = Math.round(Math.abs(calcSum - docTotal) * 100) / 100;\n\nreturn [{\n  json: {\n    is_valid: issues.length === 0,\n    merchant_name: merchant,\n    date,\n    total_amount: docTotal,\n    calc_sum: Math.round(calcSum * 100) / 100,\n    discrepancy,\n    items_count: items.length,\n    issues: issues.join('; '),\n    reasoning,\n    raw_response: String(raw).slice(0, 1500),\n    ocr_text: ocrText\n  }\n}];"
+      },
+      "id": "n4",
+      "name": "Validate (Code)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-valid",
+              "leftValue": "={{ $json.is_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "n5",
+      "name": "IF Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "PUT_SPREADSHEET_ID_HERE",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "merchant_name": "={{ $json.merchant_name }}",
+            "date": "={{ $json.date }}",
+            "total_amount": "={{ $json.total_amount }}",
+            "items_count": "={{ $json.items_count }}",
+            "calc_sum": "={{ $json.calc_sum }}",
+            "reasoning": "={{ $json.reasoning }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "n6",
+      "name": "Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1220,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "PUT_CHAT_ID_HERE",
+        "text": "=⚠️ Чек потребує ручної перевірки (Human-in-the-Loop)\n\nРозбіжність: {{ $json.discrepancy }}\nСума позицій: {{ $json.calc_sum }} / TOTAL: {{ $json.total_amount }}\nПроблеми: {{ $json.issues }}\n\nReasoning моделі:\n{{ $json.reasoning }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "n7",
+      "name": "Telegram (HITL)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1220,
+        420
+      ]
+    }
+  ],
+  "connections": {
+    "Form Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Groq Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Groq Request": {
+      "main": [
+        [
+          {
+            "node": "Groq LLM (HTTP)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq LLM (HTTP)": {
+      "main": [
+        [
+          {
+            "node": "Validate (Code)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate (Code)": {
+      "main": [
+        [
+          {
+            "node": "IF Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram (HITL)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
